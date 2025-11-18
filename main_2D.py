@@ -9,25 +9,31 @@ import os
 
 # ==================== 字体设置（解决中文显示问题） ====================
 def setup_chinese_font():
-    """自动检测并设置中文字体"""
+    """
+    自动检测并设置中文字体
+
+    入口 (无):
+        无需外部参数，函数会根据运行平台自动查找常见中文字体并尝试加载。
+
+    出口 (无):
+        无返回值。函数会设置 matplotlib 的字体配置（全局影响），并在控制台打印加载结果或警告。
+    """
     system = platform.system()
     
-    # 常见中文字体路径
     font_paths = []
     if system == "Windows":
         font_paths = [
-            "C:/Windows/Fonts/simhei.ttf",  # 黑体
-            "C:/Windows/Fonts/simsun.ttc",   # 宋体
-            "C:/Windows/Fonts/simkai.ttf",   # 楷体
+            "C:/Windows/Fonts/simhei.ttf",
+            "C:/Windows/Fonts/simsun.ttc",
+            "C:/Windows/Fonts/simkai.ttf",
         ]
     elif system == "Linux":
         font_paths = [
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # 文泉驿正黑
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", # 文泉驿微米黑
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
             "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
         ]
-    
-    # 查找可用的字体
+
     font_found = False
     for font_path in font_paths:
         if os.path.exists(font_path):
@@ -43,19 +49,26 @@ def setup_chinese_font():
     if not font_found:
         print("警告：未找到中文字体，将使用默认字体（可能无法显示中文）")
     
-    # 解决负号显示问题
     plt.rcParams['axes.unicode_minus'] = False
-    # 设置字体大小
     plt.rcParams['font.size'] = 10
 
-# 在程序开始时调用
 setup_chinese_font()
 
 # ==================== 1. 相位谱观察实验 ====================
 def phase_spectrum_experiment():
     """
-    实验1：观察相位谱的作用
-    包括：部分频谱恢复、交换相位谱
+    实验1：观察相位谱的作用（部分频谱恢复 + 交换相位谱）
+
+    入口:
+        无（函数内部会尝试读取工作目录下的 'cameraman.tif' 和 'lena.tif'，若不存在会生成模拟图像）。
+
+    出口:
+        返回两个 numpy.ndarray：
+            I1: 基准图像（浮点型，shape (M,N)），用于后续实验或显示。
+            I3: 缩放后的第二张图像（浮点型，shape 根据缩放而定）。
+
+    说明:
+        函数同时会显示并保存（显示）几幅图像用于可视化实验结果（不做文件写出）。
     """
     print("="*50)
     print("实验1：相位谱作用观察")
@@ -105,8 +118,6 @@ def phase_spectrum_experiment():
     II2 = II2 / np.max(II2)
     
     plt.subplot(143), plt.imshow(II2, cmap='gray'), plt.title('交换相位谱结果')
-    
-    # 显示部分频谱恢复结果
     plt.subplot(144), plt.imshow(II1, cmap='gray'), plt.title('部分频谱恢复')
     plt.tight_layout()
     plt.show()
@@ -117,13 +128,18 @@ def phase_spectrum_experiment():
 # ==================== 2. 空域相关计算 ====================
 def spatial_correlation(base_image, template):
     """
-    空域归一化互相关计算
-    参数:
-        base_image: 基准图 (m×n)
-        template: 子图模板 (h×w)
-    返回:
-        rho: 互相关系数图
-        peak_pos: 峰值位置 (y, x)
+    空域归一化互相关（NCC）计算。
+
+    入口:
+        base_image (numpy.ndarray): 基准图像，二维灰度数组，shape (m, n)。
+        template (numpy.ndarray): 待匹配的子图（模板），二维灰度数组，shape (h, w)，h<=m, w<=n。
+
+    出口:
+        rho (numpy.ndarray): 大小为 (m-h+1, n-w+1) 的相关系数图，每个元素为模板与该位置窗口的归一化互相关系数，取值范围近似在 [-1,1]。
+        peak_pos (tuple): 峰值位置索引 (y, x)，表示 rho 中最大值的位置，即模板最佳匹配处的坐标（以 rho 的坐标系为准，注意为 (row, col)）。
+
+    注意:
+        - 当窗口能量为 0 时，相关系数处以 0 处理以避免除零。
     """
     print("执行空域相关计算...")
     
@@ -146,7 +162,18 @@ def spatial_correlation(base_image, template):
 # ==================== 3. 频域相关计算 ====================
 def frequency_correlation(base_image, template):
     """
-    频域相关计算（FFT加速）
+    频域相关计算（基于 FFT 的加速实现）。
+
+    入口:
+        base_image (numpy.ndarray): 基准图像，二维灰度数组，shape (m, n)。
+        template (numpy.ndarray): 模板图像，二维灰度数组，shape (h, w)，会被零填充到与 base_image 相同大小后做 FFT。
+
+    出口:
+        correlation_map (numpy.ndarray): 实部相关映射，大小与 base_image 相同，峰值位置即为模板的最佳匹配处（以 base_image 的坐标系为准）。
+        peak_pos (tuple): 峰值位置索引 (y, x)，表示 correlation_map 中最大值处的索引（row, col）。
+
+    说明:
+        该方法利用频域的相关定理：IFFT(FFT(base) * conj(FFT(template_padded))) 得到相关结果。
     """
     print("执行频域相关计算...")
     
@@ -171,7 +198,18 @@ def frequency_correlation(base_image, template):
 # ==================== 4. 仅相位谱相关计算 ====================
 def phase_only_correlation(base_image, template):
     """
-    仅相位谱相关计算
+    仅相位谱相关（POC, Phase-Only Correlation）。
+
+    入口:
+        base_image (numpy.ndarray): 基准图像，二维灰度数组，shape (m, n)。
+        template (numpy.ndarray): 模板图像，二维灰度数组，shape (h, w)，将被零填充到与 base_image 相同大小。
+
+    出口:
+        poc_map (numpy.ndarray): 相位相关映射（实部），峰值对应模板位置，大小与 base_image 相同。
+        peak_pos (tuple): 峰值位置索引 (y, x)，表示 poc_map 中最大值的索引（row, col）。
+
+    说明:
+        该方法只保留频域的相位信息（将幅度置为 1），常用于对位移不敏感且对相位信息敏感的匹配场景。
     """
     print("执行仅相位谱相关计算...")
     
@@ -197,7 +235,16 @@ def phase_only_correlation(base_image, template):
 # ==================== 5. 主实验流程 ====================
 def main_experiment():
     """
-    主实验：对比空域和频域子图定位结果
+    主实验流程：对比空域、频域与仅相位谱三种方法的子图定位结果，并可视化。
+
+    入口:
+        无直接参数。函数内部会尝试读取 `pic1.png` 作为基准图（若不存在则生成模拟图像），并使用预设的若干模板位置。
+
+    出口:
+        无返回值。函数在控制台打印每次实验结果与误差，并展示若干可视化图（3D 曲面、2D 热力图、局部放大）。
+
+    说明:
+        - 返回的结果通过全局打印与窗口可视化呈现，便于分析不同方法的定位精度。
     """
     print("\n" + "="*50)
     print("主实验：子图定位对比分析")
@@ -257,12 +304,8 @@ def main_experiment():
         # ===== 2D热力图可视化（更清晰）=====
         if idx <= 6:
             fig = plt.figure(figsize=(20, 10))
-            
-            # ========== 第一行：2D热力图 ==========
-            # 空域相关热力图
             ax1 = plt.subplot(2, 3, 1)
             im1 = ax1.imshow(rho_spatial, cmap='viridis', aspect='auto', origin='lower')
-            # 用空心圆标记峰值，不遮挡颜色
             ax1.scatter(peak_spatial[1], peak_spatial[0], color='red', s=200, marker='o', 
                        edgecolors='white', linewidths=2, facecolors='none',
                        label=f'峰值({peak_spatial[1]},{peak_spatial[0]})')
@@ -273,13 +316,11 @@ def main_experiment():
             ax1.set_ylabel('Y坐标')
             ax1.legend(loc='upper right', fontsize=8)
             cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.046)
-            # 标注峰值
             ax1.text(0.02, 0.98, f'峰值={rho_spatial[peak_spatial]:.4f}', 
                     transform=ax1.transAxes, fontsize=9, 
                     verticalalignment='top', color='white',
                     bbox=dict(boxstyle='round', facecolor='black', alpha=0.7))
             
-            # 频域相关热力图
             ax2 = plt.subplot(2, 3, 2)
             im2 = ax2.imshow(rho_freq, cmap='plasma', aspect='auto', origin='lower')
             ax2.scatter(peak_freq[1], peak_freq[0], color='red', s=200, marker='o',
@@ -297,17 +338,13 @@ def main_experiment():
                     verticalalignment='top', color='white',
                     bbox=dict(boxstyle='round', facecolor='black', alpha=0.7))
             
-            # 相位谱相关热力图 - 【关键：直接归一化 + 对比度增强】
             ax3 = plt.subplot(2, 3, 3)
-            # 方案：直接归一化，不用对数（对数会放大噪声）
             rho_phase_normalized = (rho_phase - rho_phase.min()) / (rho_phase.max() - rho_phase.min() + 1e-10)
             
-            # 【关键】对比度增强：使用幂次变换突出峰值
-            gamma = 1.0  # gamma > 1 会压暗低值，突出高值
+            gamma = 1.0
             rho_phase_enhanced = np.power(rho_phase_normalized, gamma)
             
             im3 = ax3.imshow(rho_phase_enhanced, cmap='hot', aspect='auto', vmin=0, vmax=1, origin='lower')
-            # 用小圆圈标记，不遮挡峰值颜色
             ax3.scatter(peak_phase[1], peak_phase[0], color='cyan', s=150, marker='o',
                        edgecolors='white', linewidths=2, facecolors='none', 
                        label=f'峰值({peak_phase[1]},{peak_phase[0]})')
@@ -318,17 +355,13 @@ def main_experiment():
             ax3.set_ylabel('Y坐标')
             ax3.legend(loc='upper right', fontsize=8)
             cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.046)
-            # cbar3.set_label(f'增强后归一化值 (γ={gamma})', fontsize=8)
-            # 添加文字说明峰值
             ax3.text(0.02, 0.98, f'峰值={rho_phase[peak_phase]:.2e}', 
                     transform=ax3.transAxes, fontsize=9, 
                     verticalalignment='top', color='white',
                     bbox=dict(boxstyle='round', facecolor='black', alpha=0.7))
             
-            # ========== 第二行：局部放大 + 统计信息 ==========
             margin = 50
             
-            # 空域相关局部放大
             ax4 = plt.subplot(2, 3, 4)
             y_start = max(0, peak_spatial[0] - margin)
             y_end = min(rho_spatial.shape[0], peak_spatial[0] + margin)
@@ -339,13 +372,11 @@ def main_experiment():
             ax4.scatter(peak_spatial[1] - x_start, peak_spatial[0] - y_start,
                        color='red', s=250, marker='o', edgecolors='white', 
                        linewidths=2, facecolors='none')
-            # 添加十字线
             ax4.axhline(peak_spatial[0] - y_start, color='red', linestyle='--', linewidth=1, alpha=0.5)
             ax4.axvline(peak_spatial[1] - x_start, color='red', linestyle='--', linewidth=1, alpha=0.5)
             ax4.set_title(f'空域峰值区域放大(±{margin}像素)\n峰值={rho_spatial[peak_spatial]:.4f}', fontsize=10)
             plt.colorbar(im4, ax=ax4, fraction=0.046)
             
-            # 频域相关局部放大
             ax5 = plt.subplot(2, 3, 5)
             y_start = max(0, peak_freq[0] - margin)
             y_end = min(rho_freq.shape[0], peak_freq[0] + margin)
@@ -361,9 +392,7 @@ def main_experiment():
             ax5.set_title(f'频域峰值区域放大(±{margin}像素)\n峰值={rho_freq[peak_freq]:.2e}', fontsize=10)
             plt.colorbar(im5, ax=ax5, fraction=0.046)
             
-            # 相位谱相关局部放大 - 【更激进的放大策略】
             ax6 = plt.subplot(2, 3, 6)
-            # 超小范围放大（只看峰值附近10x10像素）
             mini_margin = 10
             y_start = max(0, peak_phase[0] - mini_margin)
             y_end = min(rho_phase.shape[0], peak_phase[0] + mini_margin)
@@ -371,28 +400,22 @@ def main_experiment():
             x_end = min(rho_phase.shape[1], peak_phase[1] + mini_margin)
             roi_phase_mini = rho_phase[y_start:y_end, x_start:x_end]
             
-            # 直接归一化 + Gamma增强
             roi_phase_norm = (roi_phase_mini - roi_phase_mini.min()) / (roi_phase_mini.max() - roi_phase_mini.min() + 1e-10)
-            roi_gamma = 1.0  # 局部放大用较小的gamma
+            roi_gamma = 1.0
             roi_phase_enhanced = np.power(roi_phase_norm, roi_gamma)
             
             im6 = ax6.imshow(roi_phase_enhanced, cmap='hot', aspect='auto', interpolation='bilinear', vmin=0, vmax=1, origin='lower')
-            # 空心圆标记不遮挡
             ax6.scatter(peak_phase[1] - x_start, peak_phase[0] - y_start,
                        color='cyan', s=300, marker='o', edgecolors='white', 
                        linewidths=3, facecolors='none')
-            # 画十字线
             ax6.axhline(peak_phase[0] - y_start, color='cyan', linestyle='--', linewidth=1, alpha=0.7)
             ax6.axvline(peak_phase[1] - x_start, color='cyan', linestyle='--', linewidth=1, alpha=0.7)
             
             ax6.set_title(f'相位谱峰值超近距放大(±{mini_margin}像素)\n峰值={rho_phase[peak_phase]:.2e}', 
                          fontsize=10, fontweight='bold')
             cbar6 = plt.colorbar(im6, ax=ax6, fraction=0.046)
-            # cbar6.set_label(f'Gamma增强 (γ={roi_gamma})', fontsize=8)
-            
-            # 添加网格和数值标注
+
             ax6.grid(True, color='white', linestyle=':', linewidth=0.5, alpha=0.3)
-            # 标注峰值数值
             peak_val = roi_phase_mini[peak_phase[0] - y_start, peak_phase[1] - x_start]
             ax6.text(peak_phase[1] - x_start, peak_phase[0] - y_start + 1.5, 
                     f'{peak_val:.2e}', color='white', fontsize=9, ha='center',
@@ -402,97 +425,7 @@ def main_experiment():
                         fontsize=14, fontweight='bold')
             plt.tight_layout(rect=[0, 0, 1, 0.97])
             plt.show()
-        
-        # ===== 3D mesh图可视化（可选，注释掉以避免太多窗口）=====
-        if False and idx <= 2:  # 改为False禁用，或改为特定idx启用
-            fig = plt.figure(figsize=(18, 6))
-            
-            # ---------- 空域相关 ----------
-            ax1 = fig.add_subplot(131, projection='3d')
-            X1 = np.arange(0, rho_spatial.shape[1])
-            Y1 = np.arange(0, rho_spatial.shape[0])
-            X1, Y1 = np.meshgrid(X1, Y1)
-            surf1 = ax1.plot_surface(X1, Y1, rho_spatial, cmap='viridis', 
-                                     alpha=0.7, rstride=5, cstride=5)  # 控制网格密度
-            peak_z_spatial = rho_spatial[peak_spatial[0], peak_spatial[1]]
-            ax1.scatter(peak_spatial[1], peak_spatial[0], peak_z_spatial, 
-                       color='red', s=300, marker='*', linewidths=2, edgecolors='darkred',
-                       label=f'峰值({peak_spatial[1]},{peak_spatial[0]})', 
-                       zorder=10, depthshade=False)
-            # 【关键改进1】固定Z轴范围，不随数据变化
-            z_range_spatial = rho_spatial.max() - rho_spatial.min()
-            ax1.set_zlim(rho_spatial.min() - z_range_spatial * 0.1, 
-                        rho_spatial.max() + z_range_spatial * 0.3)  # 给峰值留出空间
-            # 【关键改进2】固定视角
-            # ax1.view_init(elev=25, azim=45)  # 固定俯仰角和方位角
-            ax1.set_title(f'空域相关曲面\n峰值:({peak_spatial[1]},{peak_spatial[0]})', 
-                         fontsize=10, fontweight='bold')
-            ax1.set_xlabel('X坐标', fontsize=9)
-            ax1.set_ylabel('Y坐标', fontsize=9)
-            ax1.set_zlabel('相关系数', fontsize=9, color='blue')
-            ax1.legend(loc='upper right')
-            
-            # ---------- 频域相关 ----------
-            ax2 = fig.add_subplot(132, projection='3d')
-            X2 = np.arange(0, rho_freq.shape[1])
-            Y2 = np.arange(0, rho_freq.shape[0])
-            X2, Y2 = np.meshgrid(X2, Y2)
-            surf2 = ax2.plot_surface(X2, Y2, rho_freq, cmap='plasma', 
-                                    alpha=0.7, rstride=5, cstride=5)
-            peak_z_freq = rho_freq[peak_freq[0], peak_freq[1]]
-            ax2.scatter(peak_freq[1], peak_freq[0], peak_z_freq, 
-                       color='red', s=300, marker='*', linewidths=2, edgecolors='darkred',
-                       label=f'峰值({peak_freq[1]},{peak_freq[0]})', 
-                       zorder=10, depthshade=False)
-            z_range_freq = rho_freq.max() - rho_freq.min()
-            ax2.set_zlim(rho_freq.min() - z_range_freq * 0.1, 
-                        rho_freq.max() + z_range_freq * 0.3)
-            # ax2.view_init(elev=25, azim=45)  # 固定视角
-            ax2.set_title(f'频域相关曲面\n峰值:({peak_freq[1]},{peak_freq[0]})', 
-                         fontsize=10, fontweight='bold')
-            ax2.set_xlabel('X坐标', fontsize=9)
-            ax2.set_ylabel('Y坐标', fontsize=9)
-            ax2.set_zlabel('相关系数', fontsize=9, color='purple')
-            ax2.legend(loc='upper right')
-            
-            # ---------- 相位谱相关 ----------
-            ax3 = fig.add_subplot(133, projection='3d')
-            X3 = np.arange(0, rho_phase.shape[1])
-            Y3 = np.arange(0, rho_phase.shape[0])
-            X3, Y3 = np.meshgrid(X3, Y3)
-            surf3 = ax3.plot_surface(X3, Y3, rho_phase, cmap='coolwarm', 
-                                    alpha=0.8, rstride=5, cstride=5)
-            peak_z_phase = rho_phase[peak_phase[0], peak_phase[1]]
-            ax3.scatter(peak_phase[1], peak_phase[0], peak_z_phase, 
-                       color='red', s=350, marker='*', linewidths=2, edgecolors='darkred',
-                       label=f'峰值({peak_phase[1]},{peak_phase[0]})', 
-                       zorder=10, depthshade=False)
-            z_range_phase = rho_phase.max() - rho_phase.min()
-            # 【关键改进3】相位谱特殊处理 - 保证尖峰可见
-            if z_range_phase < 1e-6:  # 数值非常小的情况
-                ax3.set_zlim(rho_phase.min() - 1e-6, rho_phase.max() + 5e-4)
-            elif z_range_phase < 1e-3:
-                ax3.set_zlim(rho_phase.min() - z_range_phase * 0.2, 
-                            rho_phase.max() + z_range_phase * 1.0)  # 拉高上限突出峰值
-            else:
-                ax3.set_zlim(rho_phase.min() - z_range_phase * 0.1, 
-                            rho_phase.max() + z_range_phase * 0.3)
-            # ax3.view_init(elev=25, azim=45)  # 固定视角
-            ax3.set_title(f'相位谱相关曲面\n峰值:({peak_phase[1]},{peak_phase[0]})', 
-                         fontsize=10, fontweight='bold')
-            ax3.set_xlabel('X坐标', fontsize=9)
-            ax3.set_ylabel('Y坐标', fontsize=9)
-            ax3.set_zlabel('相关系数', fontsize=9, color='darkred')
-            ax3.legend(loc='upper right')
-            
-            # 添加颜色条
-            fig.colorbar(surf1, ax=ax1, shrink=0.5, aspect=10)
-            fig.colorbar(surf2, ax=ax2, shrink=0.5, aspect=10)
-            fig.colorbar(surf3, ax=ax3, shrink=0.5, aspect=10)
-            
-            plt.tight_layout()
-            plt.show()
-    
+
     # 结果表格
     print("\n表1：空域实验数据表")
     print("{:<10} {:<12} {:<12} {:<12} {:<12} {:<10} {:<10}".format(
@@ -531,10 +464,6 @@ def main_experiment():
     print(f"   空域方法 (NCC)：  Δx={np.mean(spatial_errors[:,0]):.2f}, Δy={np.mean(spatial_errors[:,1]):.2f}")
     print(f"   频域(全频谱)： Δx={np.mean(freq_errors[:,0]):.2f}, Δy={np.mean(freq_errors[:,1]):.2f}")
     print(f"   频域(仅相位)： Δx={np.mean(phase_errors[:,0]):.2f}, Δy={np.mean(phase_errors[:,1]):.2f}")
-    
-    print(f"\n3. 精度对比：空域(NCC)和频域(仅相位)的定位精度都非常高。")
-    print(f"   频域(全频谱)方法受图像幅度（亮度）干扰严重，峰值错误，定位失败。")
-    print(f"   频域(仅相位)方法完全不受亮度干扰，峰值尖锐，结果最鲁棒。")
 
 # ==================== 6. 运行主程序 ====================
 if __name__ == "__main__":

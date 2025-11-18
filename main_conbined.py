@@ -9,25 +9,32 @@ import os
 
 # ==================== 字体设置（解决中文显示问题） ====================
 def setup_chinese_font():
-    """自动检测并设置中文字体"""
+    """
+    自动检测并设置中文字体
+
+    入口 (无):
+        无需外部参数，函数会根据运行平台自动查找常见中文字体并尝试加载。
+
+    出口 (无):
+        无返回值。函数会设置 matplotlib 的字体配置（全局影响），并在控制台打印加载结果或警告。
+    """
     system = platform.system()
     
     # 常见中文字体路径
     font_paths = []
     if system == "Windows":
         font_paths = [
-            "C:/Windows/Fonts/simhei.ttf",  # 黑体
-            "C:/Windows/Fonts/simsun.ttc",   # 宋体
-            "C:/Windows/Fonts/simkai.ttf",   # 楷体
+            "C:/Windows/Fonts/simhei.ttf",
+            "C:/Windows/Fonts/simsun.ttc",
+            "C:/Windows/Fonts/simkai.ttf",
         ]
     elif system == "Linux":
         font_paths = [
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # 文泉驿正黑
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", # 文泉驿微米黑
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
             "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
         ]
     
-    # 查找可用的字体
     font_found = False
     for font_path in font_paths:
         if os.path.exists(font_path):
@@ -43,9 +50,7 @@ def setup_chinese_font():
     if not font_found:
         print("警告：未找到中文字体，将使用默认字体（可能无法显示中文）")
     
-    # 解决负号显示问题
     plt.rcParams['axes.unicode_minus'] = False
-    # 设置字体大小
     plt.rcParams['font.size'] = 10
 
 # 在程序开始时调用
@@ -54,8 +59,18 @@ setup_chinese_font()
 # ==================== 1. 相位谱观察实验 ====================
 def phase_spectrum_experiment():
     """
-    实验1：观察相位谱的作用
-    包括：部分频谱恢复、交换相位谱
+    实验1：观察相位谱的作用（部分频谱恢复 + 交换相位谱）
+
+    入口:
+        无（函数内部会尝试读取工作目录下的 'cameraman.tif' 和 'lena.tif'，若不存在会生成模拟图像）。
+
+    出口:
+        返回两个 numpy.ndarray：
+            I1: 基准图像（浮点型，shape (M,N)），用于后续实验或显示。
+            I3: 缩放后的第二张图像（浮点型，shape 根据缩放而定）。
+
+    说明:
+        函数同时会显示并保存（显示）几幅图像用于可视化实验结果（不做文件写出）。
     """
     print("="*50)
     print("实验1：相位谱作用观察")
@@ -117,13 +132,18 @@ def phase_spectrum_experiment():
 # ==================== 2. 空域相关计算 ====================
 def spatial_correlation(base_image, template):
     """
-    空域归一化互相关计算
-    参数:
-        base_image: 基准图 (m×n)
-        template: 子图模板 (h×w)
-    返回:
-        rho: 互相关系数图
-        peak_pos: 峰值位置 (y, x)
+    空域归一化互相关（NCC）计算。
+
+    入口:
+        base_image (numpy.ndarray): 基准图像，二维灰度数组，shape (m, n)。
+        template (numpy.ndarray): 待匹配的子图（模板），二维灰度数组，shape (h, w)，h<=m, w<=n。
+
+    出口:
+        rho (numpy.ndarray): 大小为 (m-h+1, n-w+1) 的相关系数图，每个元素为模板与该位置窗口的归一化互相关系数，取值范围近似在 [-1,1]。
+        peak_pos (tuple): 峰值位置索引 (y, x)，表示 rho 中最大值的位置，即模板最佳匹配处的坐标（以 rho 的坐标系为准，注意为 (row, col)）。
+
+    注意:
+        - 当窗口能量为 0 时，相关系数处以 0 处理以避免除零。
     """
     print("执行空域相关计算...")
     
@@ -146,7 +166,18 @@ def spatial_correlation(base_image, template):
 # ==================== 3. 频域相关计算 ====================
 def frequency_correlation(base_image, template):
     """
-    频域相关计算（FFT加速）
+    频域相关计算（基于 FFT 的加速实现）。
+
+    入口:
+        base_image (numpy.ndarray): 基准图像，二维灰度数组，shape (m, n)。
+        template (numpy.ndarray): 模板图像，二维灰度数组，shape (h, w)，会被零填充到与 base_image 相同大小后做 FFT。
+
+    出口:
+        correlation_map (numpy.ndarray): 实部相关映射，大小与 base_image 相同，峰值位置即为模板的最佳匹配处（以 base_image 的坐标系为准）。
+        peak_pos (tuple): 峰值位置索引 (y, x)，表示 correlation_map 中最大值处的索引（row, col）。
+
+    说明:
+        该方法利用频域的相关定理：IFFT(FFT(base) * conj(FFT(template_padded))) 得到相关结果。
     """
     print("执行频域相关计算...")
     
@@ -171,7 +202,18 @@ def frequency_correlation(base_image, template):
 # ==================== 4. 仅相位谱相关计算 ====================
 def phase_only_correlation(base_image, template):
     """
-    仅相位谱相关计算
+    仅相位谱相关（POC, Phase-Only Correlation）。
+
+    入口:
+        base_image (numpy.ndarray): 基准图像，二维灰度数组，shape (m, n)。
+        template (numpy.ndarray): 模板图像，二维灰度数组，shape (h, w)，将被零填充到与 base_image 相同大小。
+
+    出口:
+        poc_map (numpy.ndarray): 相位相关映射（实部），峰值对应模板位置，大小与 base_image 相同。
+        peak_pos (tuple): 峰值位置索引 (y, x)，表示 poc_map 中最大值的索引（row, col）。
+
+    说明:
+        该方法只保留频域的相位信息（将幅度置为 1），常用于对位移不敏感且对相位信息敏感的匹配场景。
     """
     print("执行仅相位谱相关计算...")
     
@@ -184,7 +226,6 @@ def phase_only_correlation(base_image, template):
     F_base = np.fft.fft2(base_image)
     F_template = np.fft.fft2(template_padded)
     
-    # 仅保留相位信息
     F_base_phase = np.exp(1j * np.angle(F_base))
     F_template_phase = np.exp(1j * np.angle(F_template))
     
@@ -197,7 +238,16 @@ def phase_only_correlation(base_image, template):
 # ==================== 5. 主实验流程 ====================
 def main_experiment():
     """
-    主实验：对比空域和频域子图定位结果
+    主实验流程：对比空域、频域与仅相位谱三种方法的子图定位结果，并可视化。
+
+    入口:
+        无直接参数。函数内部会尝试读取 `pic1.png` 作为基准图（若不存在则生成模拟图像），并使用预设的若干模板位置。
+
+    出口:
+        无返回值。函数在控制台打印每次实验结果与误差，并展示若干可视化图（3D 曲面、2D 热力图、局部放大）。
+
+    说明:
+        - 返回的结果通过全局打印与窗口可视化呈现，便于分析不同方法的定位精度。
     """
     print("\n" + "="*50)
     print("主实验：子图定位对比分析")
@@ -254,7 +304,7 @@ def main_experiment():
         print("{:<10} ({:<3},{:<3}) {:<15} ({:<3},{:<3}) {:<15} ({},{})".format(
             f"第{idx}次", x, y, "", peak_spatial[1], peak_spatial[0], "", error_spatial[0], error_spatial[1]))
         
-        # ===== 单张图拼接：第一行3D，第二行2D热力图，第三行2D局部放大（保持最初参数不变） =====
+        # ===== 单张图拼接：第一行3D，第二行2D热力图，第三行2D局部放大 =====
         if idx <= 6:
             fig = plt.figure(figsize=(20, 16))
 
@@ -419,10 +469,6 @@ def main_experiment():
     print(f"   空域方法 (NCC)：  Δx={np.mean(spatial_errors[:,0]):.2f}, Δy={np.mean(spatial_errors[:,1]):.2f}")
     print(f"   频域(全频谱)： Δx={np.mean(freq_errors[:,0]):.2f}, Δy={np.mean(freq_errors[:,1]):.2f}")
     print(f"   频域(仅相位)： Δx={np.mean(phase_errors[:,0]):.2f}, Δy={np.mean(phase_errors[:,1]):.2f}")
-    
-    print(f"\n3. 精度对比：空域(NCC)和频域(仅相位)的定位精度都非常高。")
-    print(f"   频域(全频谱)方法受图像幅度（亮度）干扰严重，峰值错误，定位失败。")
-    print(f"   频域(仅相位)方法完全不受亮度干扰，峰值尖锐，结果最鲁棒。")
 
 # ==================== 6. 运行主程序 ====================
 if __name__ == "__main__":
